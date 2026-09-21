@@ -1,8 +1,7 @@
 # blacklinksetups.github.io
 
-Public frontend and release feed for **Anoneurx Blacklink**.
+Release feed for **Anoneurx Blacklink** — hosted install bundles, no UI.
 
-- **`/`** — landing page (install one-liner, links to the dashboard)
 - **`/bash`** — hosted bootstrap: `curl -fsSL https://blacklink.anoneurx.com/bash | sudo bash`
 - **`/LATEST`** — current release tag
 - **`/pubkey.pem`** — Ed25519 public key that signs every release bundle
