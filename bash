@@ -81,7 +81,11 @@ ln -sf anoneurx-connect "$INSTALL_DIR/blacklink"
 log "Installing systemd unit"
 install -D -m 0644 -o root -g root "$tmpdir/anoneurx-connect.service" "$SYSTEMD_DIR/$SERVICE_NAME.service"
 
-log "Creating runtime directories"
+log "Creating system user and runtime directories"
+if ! id -u anoneurx-connect >/dev/null 2>&1; then
+    useradd --system --home /var/lib/anoneurx/connect \
+        --shell /usr/sbin/nologin anoneurx-connect
+fi
 install -d -m 0750 -o anoneurx-connect -g anoneurx-connect /var/lib/anoneurx/connect 2>/dev/null \
     || install -d -m 0750 /var/lib/anoneurx/connect
 install -d -m 0600 -o anoneurx-connect -g anoneurx-connect /etc/anoneurx/connect 2>/dev/null \
