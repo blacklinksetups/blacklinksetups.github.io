@@ -6,16 +6,18 @@
 # This script is served statically over HTTPS. It is intentionally thin:
 # detect platform, fetch the release bundle + checksum + Ed25519 signature,
 # verify, then install idempotently (binary + systemd unit). The operator
-# credential is created afterwards with `blacklink setup`.
+# credential is created interactively after install.
 #
 # Environment overrides:
 #   ANON_URL     base URL for artifacts        (default https://blacklink.anoneurx.com)
 #   ANON_VERSION release tag to install        (default latest)
+#   ANON_NONINTERACTIVE  skip interactive setup (default 0)
 
 set -eu
 
 ANON_URL="${ANON_URL:-https://blacklink.anoneurx.com}"
 ANON_VERSION="${ANON_VERSION:-latest}"
+ANON_NONINTERACTIVE="${ANON_NONINTERACTIVE:-0}"
 INSTALL_DIR="/usr/local/bin"
 SERVICE_NAME="anoneurx-connect"
 CONFIG_DIR="/etc/anoneurx/connect"
@@ -91,17 +93,62 @@ install -d -m 0750 -o anoneurx-connect -g anoneurx-connect /var/lib/anoneurx/con
 install -d -m 0600 -o anoneurx-connect -g anoneurx-connect /etc/anoneurx/connect 2>/dev/null \
     || install -d -m 0600 "$CONFIG_DIR"
 
-log "Starting $SERVICE_NAME"
+log "Starting $SERVICE_NAME (generates TLS identity)"
 systemctl daemon-reload
 systemctl enable --now "$SERVICE_NAME" >/dev/null 2>&1 || die "failed to start $SERVICE_NAME"
 
+# Wait briefly for agent to generate identity keys
+sleep 2
+
+# Interactive operator setup
+if [ "$ANON_NONINTERACTIVE" = "0" ]; then
+    log "Setting up operator credential (username + password)"
+    if ! "$INSTALL_DIR/blacklink" setup; then
+        die "operator setup failed"
+    fi
+fi
+
+# Get server public IP for the login URL
+SERVER_IP="$(curl -fsSL --max-time 5 ifconfig.me 2>/dev/null || curl -fsSL --max-time 5 icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')"
+LOGIN_URL="https://anoneurx.com/auth?mode=blacklink"
+
+# Generate QR code if qrencode is available
+QR_CODE=""
+if command -v qrencode >/dev/null 2>&1; then
+    QR_CODE="$(qrencode -t UTF8 "$LOGIN_URL" 2>/dev/null || true)"
+fi
+
 cat <<EOF
 
-Anoneurx Connect v$release installed.
-The daemon runs as anoneurx-connect; pair it with a gateway and then create
-your operator login:
+╔══════════════════════════════════════════════════════════════════════╗
+║                    Anoneurx Connect v$release installed!              ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  The daemon runs as 'anoneurx-connect' on port 8443.                ║
+║  Your operator credential is configured (argon2id, stored 0600).    ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  🔗  Dashboard: $LOGIN_URL                                         ║
+EOF
 
-    sudo blacklink setup          # username + password (argon2 id, 0600)
+if [ -n "$SERVER_IP" ]; then
+    printf '║  🌐  Your server IP: %s\n' "$SERVER_IP"
+    printf '║     (enter this in the dashboard "Server IP" field)\n'
+fi
 
-Sign in to the console with this host's IP + username + password.
+cat <<'EOF'
+╠═══════════════════════════════════════════════════════════════════════╣
+║  📱  Scan to open dashboard:                                         ║
+EOF
+
+if [ -n "$QR_CODE" ]; then
+    echo "$QR_CODE" | while IFS= read -r line; do
+        printf '║  %s\n' "$line"
+    done
+else
+    printf '║  (install qrencode for QR code, or visit the URL above)\n'
+fi
+
+cat <<EOF
+╠═══════════════════════════════════════════════════════════════════════╣
+║  Login with the username + password you just set.                    ║
+╚══════════════════════════════════════════════════════════════════════╝
 EOF
