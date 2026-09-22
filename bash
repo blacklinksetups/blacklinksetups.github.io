@@ -11,13 +11,14 @@
 # Environment overrides:
 #   ANON_URL     base URL for artifacts        (default https://blacklink.anoneurx.com)
 #   ANON_VERSION release tag to install        (default latest)
-#   ANON_NONINTERACTIVE  skip interactive setup (default 0)
+#   ANON_NONINTERACTIVE  skip hand-off prompt  (default 1 — account setup is done
+#                       interactively with `sudo blacklink` after install)
 
 set -eu
 
 ANON_URL="${ANON_URL:-https://blacklink.anoneurx.com}"
 ANON_VERSION="${ANON_VERSION:-latest}"
-ANON_NONINTERACTIVE="${ANON_NONINTERACTIVE:-0}"
+ANON_NONINTERACTIVE="${ANON_NONINTERACTIVE:-1}"
 INSTALL_DIR="/usr/local/bin"
 SERVICE_NAME="blacklink"
 CONFIG_DIR="/etc/anoneurx/blacklink"
@@ -101,8 +102,6 @@ systemctl enable --now "$SERVICE_NAME" >/dev/null 2>&1 || die "failed to start $
 # Wait briefly for agent to generate identity keys
 sleep 2
 
-# Interactive operator setup — run as the service user so operator.json is
-# owned by blacklink (the systemd unit runs as blacklink and must read it).
 if [ "$ANON_NONINTERACTIVE" = "0" ]; then
     log "Setting up operator credential (username + password)"
     if ! runuser -u blacklink -- "$INSTALL_DIR/blacklink" setup; then
@@ -124,10 +123,15 @@ fi
 cat <<EOF
 
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Anoneurx Connect v$release installed!              ║
+║                    Anoneurx Black Link v$release installed!           ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║  The daemon runs as 'blacklink' on port 8443.                     ║
-║  Your operator credential is configured (argon2id, stored 0600).    ║
+║  The daemon runs as 'blacklink' (TLS port 8443).                      ║
+║  Now set up your operator account on this host:                       ║
+║                                                                       ║
+║      sudo blacklink                                                   ║
+║                                                                       ║
+║  It will create your username + password and show a QR + link for     ║
+║  remote login at Black Link Auth.                                     ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  🔗  Dashboard: $LOGIN_URL                                         ║
 EOF
@@ -152,6 +156,6 @@ fi
 
 cat <<EOF
 ╠═══════════════════════════════════════════════════════════════════════╣
-║  Login with the username + password you just set.                    ║
+║  Log in with the username + password you set in 'sudo blacklink'.    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 EOF
