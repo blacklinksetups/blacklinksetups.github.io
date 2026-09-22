@@ -92,8 +92,17 @@ install -d -m 0750 -o blacklink -g blacklink /var/lib/anoneurx/blacklink 2>/dev/
     || install -d -m 0750 /var/lib/anoneurx/blacklink
 install -d -m 0750 -o blacklink -g blacklink /var/log/anoneurx 2>/dev/null \
     || install -d -m 0750 /var/log/anoneurx
-install -d -m 0600 -o blacklink -g blacklink /etc/anoneurx/blacklink 2>/dev/null \
-    || install -d -m 0600 "$CONFIG_DIR"
+install -d -m 0700 -o blacklink -g blacklink /etc/anoneurx/blacklink 2>/dev/null \
+    || install -d -m 0700 "$CONFIG_DIR"
+# Re-applied explicitly so a previous install that used 0600 is corrected
+# (a directory without the execute bit cannot be traversed by its owner).
+chown blacklink:blacklink "$CONFIG_DIR" 2>/dev/null || true
+chmod 0700 "$CONFIG_DIR" 2>/dev/null || true
+
+# Some sudo configurations set a secure_path that omits /usr/local/bin, which
+# leaves `sudo blacklink` resolved to nothing even after install. Symlink into
+# /usr/bin so the operator-facing `sudo blacklink` works everywhere.
+ln -sf "$INSTALL_DIR/blacklink" /usr/bin/blacklink
 
 log "Starting $SERVICE_NAME (generates TLS identity)"
 systemctl daemon-reload
@@ -110,52 +119,4 @@ if [ "$ANON_NONINTERACTIVE" = "0" ]; then
     chown -R blacklink:blacklink "$CONFIG_DIR" 2>/dev/null || true
 fi
 
-# Get server public IP for the login URL
-SERVER_IP="$(curl -fsSL --max-time 5 ifconfig.me 2>/dev/null || curl -fsSL --max-time 5 icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')"
-LOGIN_URL="https://anoneurx.com/auth?mode=blacklink"
-
-# Generate QR code if qrencode is available
-QR_CODE=""
-if command -v qrencode >/dev/null 2>&1; then
-    QR_CODE="$(qrencode -t UTF8 "$LOGIN_URL" 2>/dev/null || true)"
-fi
-
-cat <<EOF
-
-╔══════════════════════════════════════════════════════════════════════╗
-║                    Anoneurx Black Link v$release installed!           ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  The daemon runs as 'blacklink' (TLS port 8443).                      ║
-║  Now set up your operator account on this host:                       ║
-║                                                                       ║
-║      sudo blacklink                                                   ║
-║                                                                       ║
-║  It will create your username + password and show a QR + link for     ║
-║  remote login at Black Link Auth.                                     ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  🔗  Dashboard: $LOGIN_URL                                         ║
-EOF
-
-if [ -n "$SERVER_IP" ]; then
-    printf '║  🌐  Your server IP: %s\n' "$SERVER_IP"
-    printf '║     (enter this in the dashboard "Server IP" field)\n'
-fi
-
-cat <<'EOF'
-╠═══════════════════════════════════════════════════════════════════════╣
-║  📱  Scan to open dashboard:                                         ║
-EOF
-
-if [ -n "$QR_CODE" ]; then
-    echo "$QR_CODE" | while IFS= read -r line; do
-        printf '║  %s\n' "$line"
-    done
-else
-    printf '║  (install qrencode for QR code, or visit the URL above)\n'
-fi
-
-cat <<EOF
-╠═══════════════════════════════════════════════════════════════════════╣
-║  Log in with the username + password you set in 'sudo blacklink'.    ║
-╚══════════════════════════════════════════════════════════════════════╝
-EOF
+log "Installed. Set up your operator account with:  sudo blacklink"
