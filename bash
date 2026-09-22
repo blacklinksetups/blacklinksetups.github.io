@@ -19,8 +19,8 @@ ANON_URL="${ANON_URL:-https://blacklink.anoneurx.com}"
 ANON_VERSION="${ANON_VERSION:-latest}"
 ANON_NONINTERACTIVE="${ANON_NONINTERACTIVE:-0}"
 INSTALL_DIR="/usr/local/bin"
-SERVICE_NAME="anoneurx-connect"
-CONFIG_DIR="/etc/anoneurx/connect"
+SERVICE_NAME="blacklink"
+CONFIG_DIR="/etc/anoneurx/blacklink"
 SYSTEMD_DIR="/etc/systemd/system"
 
 log() { printf '[*] %s\n' "$*"; }
@@ -52,7 +52,7 @@ fi
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-url() { printf '%s/releases/%s/anoneurx-connect-%s-%s.tar.gz%s' "$ANON_URL" "$release" "$os" "$arch" "$1"; }
+url() { printf '%s/releases/%s/blacklink-%s-%s.tar.gz%s' "$ANON_URL" "$release" "$os" "$arch" "$1"; }
 
 log "Fetching $release ($os/$arch)"
 curl -fsSL -o "$tmpdir/bundle.tar.gz" "$(url '')"
@@ -77,20 +77,21 @@ log "Extracting release"
 tar -xzf "$tmpdir/bundle.tar.gz" -C "$tmpdir"
 
 log "Installing binary to $INSTALL_DIR"
-install -D -m 0755 -o root -g root "$tmpdir/anoneurx-connect" "$INSTALL_DIR/anoneurx-connect"
-ln -sf anoneurx-connect "$INSTALL_DIR/blacklink"
+install -D -m 0755 -o root -g root "$tmpdir/blacklink" "$INSTALL_DIR/blacklink"
 
 log "Installing systemd unit"
-install -D -m 0644 -o root -g root "$tmpdir/anoneurx-connect.service" "$SYSTEMD_DIR/$SERVICE_NAME.service"
+install -D -m 0644 -o root -g root "$tmpdir/blacklink.service" "$SYSTEMD_DIR/$SERVICE_NAME.service"
 
 log "Creating system user and runtime directories"
-if ! id -u anoneurx-connect >/dev/null 2>&1; then
-    useradd --system --home /var/lib/anoneurx/connect \
-        --shell /usr/sbin/nologin anoneurx-connect
+if ! id -u blacklink >/dev/null 2>&1; then
+    useradd --system --home /var/lib/anoneurx/blacklink \
+        --shell /usr/sbin/nologin blacklink
 fi
-install -d -m 0750 -o anoneurx-connect -g anoneurx-connect /var/lib/anoneurx/connect 2>/dev/null \
-    || install -d -m 0750 /var/lib/anoneurx/connect
-install -d -m 0600 -o anoneurx-connect -g anoneurx-connect /etc/anoneurx/connect 2>/dev/null \
+install -d -m 0750 -o blacklink -g blacklink /var/lib/anoneurx/blacklink 2>/dev/null \
+    || install -d -m 0750 /var/lib/anoneurx/blacklink
+install -d -m 0750 -o blacklink -g blacklink /var/log/anoneurx 2>/dev/null \
+    || install -d -m 0750 /var/log/anoneurx
+install -d -m 0600 -o blacklink -g blacklink /etc/anoneurx/blacklink 2>/dev/null \
     || install -d -m 0600 "$CONFIG_DIR"
 
 log "Starting $SERVICE_NAME (generates TLS identity)"
@@ -100,12 +101,14 @@ systemctl enable --now "$SERVICE_NAME" >/dev/null 2>&1 || die "failed to start $
 # Wait briefly for agent to generate identity keys
 sleep 2
 
-# Interactive operator setup
+# Interactive operator setup — run as the service user so operator.json is
+# owned by blacklink (the systemd unit runs as blacklink and must read it).
 if [ "$ANON_NONINTERACTIVE" = "0" ]; then
     log "Setting up operator credential (username + password)"
-    if ! "$INSTALL_DIR/blacklink" setup; then
+    if ! runuser -u blacklink -- "$INSTALL_DIR/blacklink" setup; then
         die "operator setup failed"
     fi
+    chown -R blacklink:blacklink "$CONFIG_DIR" 2>/dev/null || true
 fi
 
 # Get server public IP for the login URL
@@ -123,7 +126,7 @@ cat <<EOF
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                    Anoneurx Connect v$release installed!              ║
 ╠══════════════════════════════════════════════════════════════════════╣
-║  The daemon runs as 'anoneurx-connect' on port 8443.                ║
+║  The daemon runs as 'blacklink' on port 8443.                     ║
 ║  Your operator credential is configured (argon2id, stored 0600).    ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  🔗  Dashboard: $LOGIN_URL                                         ║
